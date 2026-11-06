@@ -106,10 +106,19 @@ public abstract class SocketWrapperBase<E> {
     protected volatile OperationState<?> writeOperation = null;
 
     /**
-     * The org.apache.coyote.Processor instance currently associated
-     * with the wrapper.
+     * The org.apache.coyote.Processor instance currently associated with the
+     * wrapper. Only populated when required to maintain wrapper<->Processor
+     * mapping between calls to
+     * {@link AbstractEndpoint.Handler#process(SocketWrapperBase, SocketEvent)}.
      */
     protected Object currentProcessor = null;
+
+    /*
+     * Guards currentProcessor so that takeCurrentProcessor() is an atomic
+     * get-and-clear. Upstream makes the field a private AtomicReference; the
+     * protected field is kept here so the public API of 9.0.39 is unchanged.
+     */
+    private final Object currentProcessorLock = new Object();
 
     public SocketWrapperBase(E socket, AbstractEndpoint<E,?> endpoint) {
         this.socket = socket;
@@ -136,11 +145,23 @@ public abstract class SocketWrapperBase<E> {
     }
 
     public Object getCurrentProcessor() {
-        return currentProcessor;
+        synchronized (currentProcessorLock) {
+            return currentProcessor;
+        }
     }
 
     public void setCurrentProcessor(Object currentProcessor) {
-        this.currentProcessor = currentProcessor;
+        synchronized (currentProcessorLock) {
+            this.currentProcessor = currentProcessor;
+        }
+    }
+
+    public Object takeCurrentProcessor() {
+        synchronized (currentProcessorLock) {
+            Object result = currentProcessor;
+            currentProcessor = null;
+            return result;
+        }
     }
 
     /**
