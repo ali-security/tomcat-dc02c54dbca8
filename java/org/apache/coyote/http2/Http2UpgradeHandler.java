@@ -1835,6 +1835,20 @@ class Http2UpgradeHandler extends AbstractStream implements InternalHttpUpgradeH
             streams.replace(original.getIdentifier(), replacement);
             original.replaceStream(replacement);
         }
+        synchronized (this) {
+            /*
+             * If the stream being replaced is still in the backlog (usually
+             * because it has been reset) remove the stream from the backlog
+             * along with its allocation request. Any allocation granted but not
+             * used has already been removed from backLogSize and was never
+             * taken from the connection window.
+             */
+            BacklogTracker tracker = backLogStreams.remove(original);
+            if (tracker != null) {
+                // Remove unallocated request from the backlog
+                backLogSize -= tracker.getRemainingReservation();
+            }
+        }
     }
 
 
